@@ -78,6 +78,7 @@ describe('Test customRoutes middleware', () => {
           disableRoutesTerm: '',
           enableAppsRoutes: true,
           enableCmsRoutes: false,
+          enableContentPlatformRoutes: false,
           enableNavigationRoutes: true,
           enableProductRoutes: true,
           ignoreBindings: false,
@@ -194,5 +195,102 @@ describe('Test customRoutes middleware', () => {
       { name: 'user-routes', routes: ['/user-1'] },
     ])
     expect(next).toHaveBeenCalled()
+  })
+
+  it('should expose content-platform-routes when enableContentPlatformRoutes is true (US-5)', async () => {
+    const mockData = {
+      data: [
+        { name: 'apps-routes', routes: ['/app-1'] },
+        { name: 'user-routes', routes: ['/user-1'] },
+        { name: 'cms-routes', routes: [] },
+        {
+          name: 'content-platform-routes',
+          routes: ['/our-story', '/microsite/holiday'],
+        },
+      ],
+      timestamp: Date.now() - 1000 * 60 * 60,
+    }
+    cachedData = mockData
+    context.state.settings.enableContentPlatformRoutes = true
+
+    await customRoutes(context, next)
+
+    expect(context.status).toBe(200)
+    expect(context.body).toEqual([
+      { name: 'apps-routes', routes: ['/app-1'] },
+      { name: 'user-routes', routes: ['/user-1'] },
+      {
+        name: 'content-platform-routes',
+        routes: ['/our-story', '/microsite/holiday'],
+      },
+    ])
+    expect(next).toHaveBeenCalled()
+  })
+
+  it('should omit content-platform-routes when its flag is off (US-5 — invariant 9)', async () => {
+    const mockData = {
+      data: [
+        { name: 'apps-routes', routes: ['/app-1'] },
+        { name: 'user-routes', routes: ['/user-1'] },
+        { name: 'content-platform-routes', routes: ['/our-story'] },
+      ],
+      timestamp: Date.now() - 1000 * 60 * 60,
+    }
+    cachedData = mockData
+    context.state.settings.enableContentPlatformRoutes = false
+
+    await customRoutes(context, next)
+
+    expect(context.status).toBe(200)
+    expect(context.body).toEqual([
+      { name: 'apps-routes', routes: ['/app-1'] },
+      { name: 'user-routes', routes: ['/user-1'] },
+    ])
+  })
+
+  it('exposes ONLY content-platform-routes (not cms-routes) when both flags are on — Content Platform wins (US-5 / Decision 8)', async () => {
+    const mockData = {
+      data: [
+        { name: 'apps-routes', routes: ['/app-1'] },
+        { name: 'user-routes', routes: ['/user-1'] },
+        { name: 'cms-routes', routes: ['/hcms-page'] },
+        { name: 'content-platform-routes', routes: ['/cp-page'] },
+      ],
+      timestamp: Date.now() - 1000 * 60 * 60,
+    }
+    cachedData = mockData
+    context.state.settings.enableCmsRoutes = true
+    context.state.settings.enableContentPlatformRoutes = true
+
+    await customRoutes(context, next)
+
+    expect(context.status).toBe(200)
+    expect(context.body).toEqual([
+      { name: 'apps-routes', routes: ['/app-1'] },
+      { name: 'user-routes', routes: ['/user-1'] },
+      { name: 'content-platform-routes', routes: ['/cp-page'] },
+    ])
+  })
+
+  it('returns only apps-routes + user-routes when both CMS flags are off (US-6 — backwards compatibility)', async () => {
+    const mockData = {
+      data: [
+        { name: 'apps-routes', routes: ['/app-1'] },
+        { name: 'user-routes', routes: ['/user-1'] },
+        { name: 'cms-routes', routes: ['/hcms-page'] },
+        { name: 'content-platform-routes', routes: ['/cp-page'] },
+      ],
+      timestamp: Date.now() - 1000 * 60 * 60,
+    }
+    cachedData = mockData
+    context.state.settings.enableCmsRoutes = false
+    context.state.settings.enableContentPlatformRoutes = false
+
+    await customRoutes(context, next)
+
+    expect(context.body).toEqual([
+      { name: 'apps-routes', routes: ['/app-1'] },
+      { name: 'user-routes', routes: ['/user-1'] },
+    ])
   })
 })

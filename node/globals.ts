@@ -61,6 +61,10 @@ declare global {
     changefreq?: ChangeFreq
     priority?: number
     lastmod?: string
+    // Origin of the entry, kept for observability / future deduplication. The
+    // XML pipeline does not branch on this field — same downstream shape for
+    // every source (spec Decision 7).
+    source?: 'hcms' | 'content-platform' | 'apps' | 'user'
   }
 
   interface AlternateRoute {

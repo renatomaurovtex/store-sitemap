@@ -4,12 +4,19 @@ import * as TypeMoq from 'typemoq'
 import {
   APPS_ROUTES_INDEX,
   CMS_ROUTES_INDEX,
+  CONTENT_PLATFORM_ROUTES_INDEX,
   PRODUCT_ROUTES_INDEX,
   REWRITER_ROUTES_INDEX,
 } from './generateMiddlewares/utils'
 
 import { Clients } from '../clients'
-import { CMS_ROUTES_PREFIX, EXTENDED_INDEX_FILE, getBucket, hashString } from '../utils'
+import {
+  CMS_ROUTES_PREFIX,
+  CONTENT_PLATFORM_ROUTES_PREFIX,
+  EXTENDED_INDEX_FILE,
+  getBucket,
+  hashString,
+} from '../utils'
 import { sitemap } from './sitemap'
 
 const vbaseTypeMock = TypeMoq.Mock.ofInstance(VBase)
@@ -24,8 +31,13 @@ describe('Test sitemap middleware', () => {
   let context: Context
   let hasExtendedFiles: boolean
   let hasCmsRoutesFiles: boolean
+  let hasContentPlatformRoutesFiles: boolean
 
   const cmsBucket = getBucket(CMS_ROUTES_PREFIX, hashString('1'))
+  const contentPlatformBucket = getBucket(
+    CONTENT_PLATFORM_ROUTES_PREFIX,
+    hashString('1')
+  )
 
   const vbase = class VBaseMock extends vbaseTypeMock.object {
     constructor() {
@@ -41,6 +53,17 @@ describe('Test sitemap middleware', () => {
         return ((hasCmsRoutesFiles
           ? {
               index: ['cms-routes-0'],
+              lastUpdated: '2019-12-04',
+            }
+          : null) as unknown) as T
+      }
+      if (
+        file === CONTENT_PLATFORM_ROUTES_INDEX &&
+        bucket === contentPlatformBucket
+      ) {
+        return ((hasContentPlatformRoutesFiles
+          ? {
+              index: ['content-platform-routes-0'],
               lastUpdated: '2019-12-04',
             }
           : null) as unknown) as T
@@ -104,6 +127,7 @@ describe('Test sitemap middleware', () => {
 
     hasExtendedFiles = false
     hasCmsRoutesFiles = false
+    hasContentPlatformRoutesFiles = false
     context = {
       ...contextMock.object,
       clients: new ClientsImpl({}, ioContext.object),
@@ -127,6 +151,7 @@ describe('Test sitemap middleware', () => {
           disableRoutesTerm: '',
           enableAppsRoutes: true,
           enableCmsRoutes: false,
+          enableContentPlatformRoutes: false,
           enableNavigationRoutes: true,
           enableProductRoutes: true,
           ignoreBindings: false,
@@ -370,5 +395,43 @@ describe('Test sitemap middleware', () => {
     context.state.settings.enableCmsRoutes = false
     await sitemap(context, next)
     expect(context.body).not.toContain('cms-routes-0')
+  })
+
+  it('Should append content-platform-routes sub-sitemaps to <sitemapindex> when enableContentPlatformRoutes is on (US-1 — Content Platform)', async () => {
+    hasContentPlatformRoutesFiles = true
+    context.state.settings.enableContentPlatformRoutes = true
+    await sitemap(context, next)
+    expect(context.body).toContain(
+      '<loc>https://www.host.com/sitemap/content-platform-routes-0.xml</loc>'
+    )
+  })
+
+  it('Should NOT read content-platform-routes when its flag is off (invariant 9)', async () => {
+    hasContentPlatformRoutesFiles = true
+    context.state.settings.enableContentPlatformRoutes = false
+    await sitemap(context, next)
+    expect(context.body).not.toContain('content-platform-routes-0')
+  })
+
+  it('Should reference ONLY content-platform-routes (not cms-routes) when both flags are on — Content Platform wins (US-6 / Decision 8)', async () => {
+    hasCmsRoutesFiles = true
+    hasContentPlatformRoutesFiles = true
+    context.state.settings.enableCmsRoutes = true
+    context.state.settings.enableContentPlatformRoutes = true
+    await sitemap(context, next)
+    expect(context.body).toContain(
+      '<loc>https://www.host.com/sitemap/content-platform-routes-0.xml</loc>'
+    )
+    expect(context.body).not.toContain('cms-routes-0')
+  })
+
+  it('Should reference cms-routes (not content-platform-routes) when only enableCmsRoutes is on (Decision 8 — hCMS wins)', async () => {
+    hasCmsRoutesFiles = true
+    hasContentPlatformRoutesFiles = true
+    context.state.settings.enableCmsRoutes = true
+    context.state.settings.enableContentPlatformRoutes = false
+    await sitemap(context, next)
+    expect(context.body).toContain('cms-routes-0')
+    expect(context.body).not.toContain('content-platform-routes-0')
   })
 })

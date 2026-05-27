@@ -1,6 +1,7 @@
 import { IOClients, Sphinx, VBase } from '@vtex/api'
 
 import { Catalog } from './catalog'
+import { CmsDataPlane } from './cmsDataPlane'
 import { GraphQLServer } from './graphqlServer'
 import { VtexID } from './id'
 import { Messages } from './messages'
@@ -48,6 +49,10 @@ export class Clients extends IOClients {
 
   public get sphinx() {
     return this.getOrSet('sphinx', Sphinx)
+  }
+
+  public get cmsDataPlane() {
+    return this.getOrSet('cmsDataPlane', CmsDataPlane)
   }
 
 }

@@ -1,8 +1,10 @@
 import * as cheerio from 'cheerio'
 
 import { MultipleSitemapGenerationError } from '../errors'
+import { resolveActiveCmsSource } from '../services/routes'
 import {
   CMS_ROUTES_PREFIX,
+  CONTENT_PLATFORM_ROUTES_PREFIX,
   EXTENDED_INDEX_FILE,
   xmlTruncateNodes,
   getBucket,
@@ -12,6 +14,7 @@ import {
 } from '../utils'
 import {
   CMS_ROUTES_INDEX,
+  CONTENT_PLATFORM_ROUTES_INDEX,
   currentDate,
   SitemapIndex,
 } from './generateMiddlewares/utils'
@@ -67,17 +70,29 @@ const sitemapIndex = async (ctx: Context) => {
     }
   )
 
-  // CMS routes are stored in a dedicated bucket (Decision 1 of the spec) and
-  // only read when the rollout flag is on (invariant 9 — settings gating). The
-  // read is fire-and-forget on absence: missing CMS index simply means there
-  // are no extra sub-sitemaps to append.
-  const cmsRoutesPromise = settings?.enableCmsRoutes
-    ? vbase.getJSON<SitemapIndex>(
+  // CMS / Content Platform routes are stored in dedicated buckets (Decision
+  // 1 / Decision 7 of the spec). The active source is resolved per request
+  // and only ITS index is read — mutual exclusivity at the served XML
+  // layer (Decision 8 / invariant 10). Stale files from the inactive
+  // source are intentionally NOT referenced.
+  const activeCmsSource = resolveActiveCmsSource(settings)
+  const cmsIndexPromise: Promise<SitemapIndex | null> = (() => {
+    if (activeCmsSource === 'hcms') {
+      return vbase.getJSON<SitemapIndex>(
         getBucket(CMS_ROUTES_PREFIX, hashString(binding.id)),
         CMS_ROUTES_INDEX,
         true
       )
-    : Promise.resolve(null as SitemapIndex | null)
+    }
+    if (activeCmsSource === 'content-platform') {
+      return vbase.getJSON<SitemapIndex>(
+        getBucket(CONTENT_PLATFORM_ROUTES_PREFIX, hashString(binding.id)),
+        CONTENT_PLATFORM_ROUTES_INDEX,
+        true
+      )
+    }
+    return Promise.resolve(null)
+  })()
 
   const rawIndexFiles = await Promise.all([
     ...enabledIndexFiles.map(indexFile =>
@@ -88,7 +103,7 @@ const sitemapIndex = async (ctx: Context) => {
       EXTENDED_INDEX_FILE,
       true
     ),
-    cmsRoutesPromise,
+    cmsIndexPromise,
   ])
 
   const indexFiles = rawIndexFiles.filter(Boolean) as SitemapIndex[]

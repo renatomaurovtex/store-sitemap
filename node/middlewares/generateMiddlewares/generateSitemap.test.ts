@@ -5,6 +5,8 @@ import { Clients } from '../../clients'
 import { generateSitemap } from './generateSitemap'
 import {
   GENERATE_APPS_ROUTES_EVENT,
+  GENERATE_CMS_ROUTES_EVENT,
+  GENERATE_CONTENT_PLATFORM_ROUTES_EVENT,
   GENERATE_PRODUCT_ROUTES_EVENT,
   GENERATE_REWRITER_ROUTES_EVENT,
 } from './utils'
@@ -23,6 +25,7 @@ const DEFAULT_APPS_ROUTES_PAYLOAD = {
 
 const DEFAULT_REWRITER_ROUTES_PAYLOAD = {
   count: 0,
+  disableRoutesTerm: '',
   generationId: '1',
   next: null,
   report: {},
@@ -74,6 +77,7 @@ describe('Test generate sitemap', () => {
           disableRoutesTerm: '',
           enableAppsRoutes: true,
           enableCmsRoutes: true,
+          enableContentPlatformRoutes: false,
           enableNavigationRoutes: true,
           enableProductRoutes: true,
           ignoreBindings: false,
@@ -110,6 +114,7 @@ describe('Test generate sitemap', () => {
       disableRoutesTerm: '',
       enableAppsRoutes: true,
       enableCmsRoutes: true,
+      enableContentPlatformRoutes: false,
       enableNavigationRoutes: true,
       enableProductRoutes: false,
       ignoreBindings: false,
@@ -126,13 +131,21 @@ describe('Test generate sitemap', () => {
       GENERATE_APPS_ROUTES_EVENT,
       DEFAULT_APPS_ROUTES_PAYLOAD
     )
-    expect(eventSent).toHaveBeenCalledTimes(2)
+    // hCMS event also fires because enableCmsRoutes is on and Content
+    // Platform is off (active source resolves to 'hcms' per Decision 8).
+    expect(eventSent).toHaveBeenCalledWith(
+      '',
+      GENERATE_CMS_ROUTES_EVENT,
+      { generationId: '1' }
+    )
+    expect(eventSent).toHaveBeenCalledTimes(3)
 
     jest.clearAllMocks()
     context.state.settings = {
       disableRoutesTerm: '',
       enableAppsRoutes: false,
       enableCmsRoutes: true,
+      enableContentPlatformRoutes: false,
       enableNavigationRoutes: false,
       enableProductRoutes: true,
       ignoreBindings: false,
@@ -144,6 +157,56 @@ describe('Test generate sitemap', () => {
       GENERATE_PRODUCT_ROUTES_EVENT,
       DEFAULT_PRODUCT_ROUTES_PAYLOAD
     )
+    expect(eventSent).toHaveBeenCalledWith(
+      '',
+      GENERATE_CMS_ROUTES_EVENT,
+      { generationId: '1' }
+    )
+    expect(eventSent).toHaveBeenCalledTimes(2)
+  })
+
+  it('emits GENERATE_CONTENT_PLATFORM_ROUTES_EVENT (not the hCMS event) when the Content Platform flag wins (US-6 / Decision 8)', async () => {
+    context.state.settings = {
+      disableRoutesTerm: '',
+      enableAppsRoutes: false,
+      enableCmsRoutes: true,
+      enableContentPlatformRoutes: true,
+      enableNavigationRoutes: false,
+      enableProductRoutes: false,
+      ignoreBindings: false,
+    }
+
+    await generateSitemap(context)
+    expect(eventSent).toHaveBeenCalledWith(
+      '',
+      GENERATE_CONTENT_PLATFORM_ROUTES_EVENT,
+      { generationId: '1' }
+    )
+    // hCMS event MUST NOT fire when Content Platform is the active source.
+    const cmsCall = eventSent.mock.calls.find(
+      ([, event]) => event === GENERATE_CMS_ROUTES_EVENT
+    )
+    expect(cmsCall).toBeUndefined()
     expect(eventSent).toHaveBeenCalledTimes(1)
+  })
+
+  it('emits NEITHER CMS source event when both flags are off (US-6 — backwards compatibility)', async () => {
+    context.state.settings = {
+      disableRoutesTerm: '',
+      enableAppsRoutes: true,
+      enableCmsRoutes: false,
+      enableContentPlatformRoutes: false,
+      enableNavigationRoutes: true,
+      enableProductRoutes: true,
+      ignoreBindings: false,
+    }
+
+    await generateSitemap(context)
+    const cmsCall = eventSent.mock.calls.find(
+      ([, event]) =>
+        event === GENERATE_CMS_ROUTES_EVENT ||
+        event === GENERATE_CONTENT_PLATFORM_ROUTES_EVENT
+    )
+    expect(cmsCall).toBeUndefined()
   })
 })

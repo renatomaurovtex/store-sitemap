@@ -21,6 +21,14 @@ export const CMS_ROUTES_MAX_URLS_PER_FILE = 50000
 export const CMS_ROUTES_MAX_BYTES_PER_FILE = 50 * 1024 * 1024
 export const CMS_ROUTES_PREFIX = 'cms-routes'
 
+// Content Platform (new VTEX CMS) routes — same Google protocol ceilings, own
+// VBase bucket prefix and file-name prefix so that hCMS-legacy and Content
+// Platform artifacts coexist (mutually exclusive per generation — spec
+// Decision 8).
+export const CONTENT_PLATFORM_ROUTES_PREFIX = 'content-platform-routes'
+export const CONTENT_PLATFORM_ROUTES_MAX_URLS_PER_FILE = CMS_ROUTES_MAX_URLS_PER_FILE
+export const CONTENT_PLATFORM_ROUTES_MAX_BYTES_PER_FILE = CMS_ROUTES_MAX_BYTES_PER_FILE
+
 export const TENANT_CACHE_TTL_S = 60 * 10
 
 export const STORE_PRODUCT = 'vtex-storefront'

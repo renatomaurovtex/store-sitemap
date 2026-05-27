@@ -2,6 +2,12 @@ import { Binding, IOContext, Logger, VBase } from '@vtex/api'
 import * as TypeMoq from 'typemoq'
 
 import { Clients } from '../clients'
+import {
+  CMS_ROUTES_PREFIX,
+  CONTENT_PLATFORM_ROUTES_PREFIX,
+  getBucket,
+  hashString,
+} from '../utils'
 import { sitemapEntry, URLEntry } from './sitemapEntry'
 
 const vbaseTypeMock = TypeMoq.Mock.ofInstance(VBase)
@@ -380,5 +386,175 @@ describe('Test sitemap entry', () => {
       <lastmod>2019-12-04</lastmod>
      </url>`
     ))
+  })
+
+  describe('CMS-source bucket fallback (US-1 / US-6)', () => {
+    // Mirrors the cross-border path so the middleware exercises the
+    // legacy/CMS fallback branch instead of the catalog handler.
+    const buildBucketAwareContext = (
+      activeSettings: { enableCmsRoutes: boolean; enableContentPlatformRoutes: boolean },
+      vbaseImpl: any
+    ) =>
+      ({
+        ...contextMock.object,
+        // tslint:disable-next-line:max-classes-per-file
+        clients: new (class ClientsMock extends Clients {
+          get vbase() {
+            return this.getOrSet('vbase', vbaseImpl)
+          }
+        })({}, ioContext.object),
+        state: {
+          ...state.object,
+          binding: { id: 'b1' } as Binding,
+          bucket: 'production-bucket',
+          forwardedPath: '/sitemap/content-platform-routes-0.xml',
+          isCrossBorder: true,
+          matchingBindings: [
+            {
+              canonicalBaseAddress: 'www.host.com',
+              defaultLocale: 'en-US',
+              id: 'b1',
+            },
+          ] as Binding[],
+          rootPath: '',
+          settings: {
+            disableRoutesTerm: '',
+            enableAppsRoutes: true,
+            enableCmsRoutes: activeSettings.enableCmsRoutes,
+            enableContentPlatformRoutes: activeSettings.enableContentPlatformRoutes,
+            enableNavigationRoutes: true,
+            enableProductRoutes: true,
+            ignoreBindings: false,
+          },
+        },
+        vtex: {
+          ...ioContext.object,
+          logger: loggerMock.object,
+        },
+      } as unknown) as Context
+
+    it('falls back to the content-platform-routes bucket when serving /sitemap/content-platform-routes-N.xml (Decision 7)', async () => {
+      const cpBucket = getBucket(CONTENT_PLATFORM_ROUTES_PREFIX, hashString('b1'))
+      // tslint:disable-next-line:max-classes-per-file
+      const vbaseImpl = class VBaseMock extends vbaseTypeMock.object {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        public jsonData: Record<string, Record<string, any>> = {
+          [cpBucket]: {
+            'content-platform-routes-0': {
+              lastUpdated: '2026-05-20',
+              routes: [
+                {
+                  id: 'lp-1',
+                  path: '/our-story',
+                  source: 'content-platform',
+                },
+              ],
+            },
+          },
+        }
+        constructor() {
+          super(ioContext.object)
+        }
+        public getJSON = async <T>(
+          bucket: string,
+          file: string,
+          nullable?: boolean
+        ): Promise<T> => {
+          if (this.jsonData[bucket]?.[file]) {
+            return this.jsonData[bucket][file] as T
+          }
+          if (nullable) {
+            return (null as unknown) as T
+          }
+          return (null as unknown) as T
+        }
+      }
+
+      const ctx = buildBucketAwareContext(
+        { enableCmsRoutes: false, enableContentPlatformRoutes: true },
+        vbaseImpl
+      )
+      await sitemapEntry(ctx, next)
+      expect(ctx.body).toContain('<loc>https://undefined/our-story</loc>')
+    })
+
+    it('does NOT fall back to content-platform-routes bucket when its flag is off (invariant 9)', async () => {
+      const cpBucket = getBucket(CONTENT_PLATFORM_ROUTES_PREFIX, hashString('b1'))
+      // tslint:disable-next-line:max-classes-per-file
+      const vbaseImpl = class VBaseMock extends vbaseTypeMock.object {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        public jsonData: Record<string, Record<string, any>> = {
+          [cpBucket]: {
+            'content-platform-routes-0': {
+              lastUpdated: '2026-05-20',
+              routes: [{ id: 'lp-1', path: '/our-story' }],
+            },
+          },
+        }
+        constructor() {
+          super(ioContext.object)
+        }
+        public getJSON = async <T>(
+          bucket: string,
+          file: string,
+          nullable?: boolean
+        ): Promise<T> => {
+          if (this.jsonData[bucket]?.[file]) {
+            return this.jsonData[bucket][file] as T
+          }
+          if (nullable) {
+            return (null as unknown) as T
+          }
+          return (null as unknown) as T
+        }
+      }
+
+      const ctx = buildBucketAwareContext(
+        { enableCmsRoutes: false, enableContentPlatformRoutes: false },
+        vbaseImpl
+      )
+      await sitemapEntry(ctx, next)
+      expect(ctx.status).toBe(404)
+    })
+
+    it('falls back to cms-routes bucket (NOT content-platform) when hCMS wins (Decision 8)', async () => {
+      const cmsBucket = getBucket(CMS_ROUTES_PREFIX, hashString('b1'))
+      // tslint:disable-next-line:max-classes-per-file
+      const vbaseImpl = class VBaseMock extends vbaseTypeMock.object {
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        public jsonData: Record<string, Record<string, any>> = {
+          [cmsBucket]: {
+            'cms-routes-0': {
+              lastUpdated: '2026-05-20',
+              routes: [{ id: 'cms-1', path: '/our-story-hcms' }],
+            },
+          },
+        }
+        constructor() {
+          super(ioContext.object)
+        }
+        public getJSON = async <T>(
+          bucket: string,
+          file: string,
+          nullable?: boolean
+        ): Promise<T> => {
+          if (this.jsonData[bucket]?.[file]) {
+            return this.jsonData[bucket][file] as T
+          }
+          if (nullable) {
+            return (null as unknown) as T
+          }
+          return (null as unknown) as T
+        }
+      }
+
+      const ctx = buildBucketAwareContext(
+        { enableCmsRoutes: true, enableContentPlatformRoutes: false },
+        vbaseImpl
+      )
+      ctx.state.forwardedPath = '/sitemap/cms-routes-0.xml'
+      await sitemapEntry(ctx, next)
+      expect(ctx.body).toContain('our-story-hcms')
+    })
   })
 })

@@ -2,8 +2,10 @@ import { Binding } from '@vtex/api'
 import * as cheerio from 'cheerio'
 import RouteParser from 'route-parser'
 
+import { resolveActiveCmsSource } from '../services/routes'
 import {
   CMS_ROUTES_PREFIX,
+  CONTENT_PLATFORM_ROUTES_PREFIX,
   getBucket,
   hashString,
   SITEMAP_URL,
@@ -207,16 +209,32 @@ async function legacySitemapEntry(ctx: Context) {
     true
   )
 
-  // Fall back to the cms-routes bucket — CMS sub-sitemaps live in their own
-  // dedicated bucket (Decision 1), so requests for `/sitemap/cms-routes-N.xml`
-  // do not find a match in the production bucket above.
-  if (!maybeRoutesInfo && settings?.enableCmsRoutes && binding?.id) {
-    const cmsBucket = getBucket(CMS_ROUTES_PREFIX, hashString(binding.id))
-    maybeRoutesInfo = await vbase.getJSON<SitemapEntry>(
-      cmsBucket,
-      fileName,
-      true
-    )
+  // Fall back to the active CMS source's bucket — both hCMS legacy and the
+  // Content Platform sub-sitemaps live in their own dedicated buckets
+  // (Decision 1 / Decision 7), so requests for `/sitemap/cms-routes-N.xml`
+  // or `/sitemap/content-platform-routes-N.xml` do not match the production
+  // bucket above. Mutual exclusivity (Decision 8) means at most one fallback
+  // can hit per generation.
+  if (!maybeRoutesInfo && binding?.id) {
+    const activeCmsSource = resolveActiveCmsSource(settings)
+    if (activeCmsSource === 'hcms') {
+      const cmsBucket = getBucket(CMS_ROUTES_PREFIX, hashString(binding.id))
+      maybeRoutesInfo = await vbase.getJSON<SitemapEntry>(
+        cmsBucket,
+        fileName,
+        true
+      )
+    } else if (activeCmsSource === 'content-platform') {
+      const cpBucket = getBucket(
+        CONTENT_PLATFORM_ROUTES_PREFIX,
+        hashString(binding.id)
+      )
+      maybeRoutesInfo = await vbase.getJSON<SitemapEntry>(
+        cpBucket,
+        fileName,
+        true
+      )
+    }
   }
 
   if (!maybeRoutesInfo) {

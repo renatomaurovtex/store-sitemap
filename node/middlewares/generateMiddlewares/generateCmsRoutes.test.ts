@@ -141,6 +141,7 @@ const buildContext = ({ internals, disableRoutesTerm = '' }: BuildContextOptions
         disableRoutesTerm,
         enableAppsRoutes: true,
         enableCmsRoutes: true,
+        enableContentPlatformRoutes: false,
         enableNavigationRoutes: true,
         enableProductRoutes: true,
         ignoreBindings: false,
@@ -413,6 +414,27 @@ describe('generateCmsRoutes', () => {
 
     const context = buildContext({ internals })
     context.state.settings.enableCmsRoutes = false
+    await generateCmsRoutes(context, next)
+
+    const { vbase } = context.clients
+    const index = await vbase.getJSON<SitemapIndex>(
+      bucketFor('1'),
+      CMS_ROUTES_INDEX,
+      true
+    )
+    expect(index).toBeNull()
+    expect(next).toBeCalled()
+  })
+
+  it('skips generation and does NOT touch VBase when Content Platform is the active source (US-6 / Decision 8)', async () => {
+    const internals = [
+      { binding: '1', from: '/our-story', id: 'cms-1', type: 'userRoute' },
+    ] as Internal[]
+
+    const context = buildContext({ internals })
+    // Both flags ON → Content Platform wins per resolveActiveCmsSource.
+    context.state.settings.enableCmsRoutes = true
+    context.state.settings.enableContentPlatformRoutes = true
     await generateCmsRoutes(context, next)
 
     const { vbase } = context.clients

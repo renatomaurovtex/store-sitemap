@@ -1,6 +1,6 @@
 # Include CMS routes in Sitemap generation for FastStore
 
-> **Status**: Done (hCMS legacy) · Draft (Content Platform increment)
+> **Status**: Done
 > **Created**: 2026-05-27
 > **Last updated**: 2026-05-27 — added support for the new VTEX CMS (Content Platform) as a parallel route source
 > **Jira**: [SFS-3123](https://vtex-dev.atlassian.net/browse/SFS-3123)

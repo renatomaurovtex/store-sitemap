@@ -1,5 +1,6 @@
 import { Internal, ListInternalsResponse } from 'vtex.rewriter'
 
+import { resolveActiveCmsSource } from '../../services/routes'
 import {
   CMS_ROUTES_MAX_BYTES_PER_FILE,
   CMS_ROUTES_MAX_URLS_PER_FILE,
@@ -224,6 +225,24 @@ export async function generateCmsRoutes(
     logger.info({
       message: 'CMS routes generation skipped: enableCmsRoutes is off',
       type: 'cms-routes-generation-skipped',
+    })
+    if (next) {
+      await next()
+    }
+    return
+  }
+
+  // Mutual exclusivity per spec Decision 8 / FR-10: when the Content
+  // Platform source is the active one, the hCMS ingestion is skipped and a
+  // one-shot structured log is emitted so the situation is observable. The
+  // running cms-routes-* artifacts from previous runs are NOT proactively
+  // purged — they are simply not referenced by the served <sitemapindex>
+  // (sitemap.ts only reads the active source's index).
+  if (resolveActiveCmsSource(settings) !== 'hcms') {
+    logger.info({
+      message:
+        'CMS routes generation skipped: Content Platform wins per Decision 8 mutual exclusivity',
+      type: 'cms-routes-ignored-by-mutual-exclusivity',
     })
     if (next) {
       await next()

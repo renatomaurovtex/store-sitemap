@@ -10,6 +10,7 @@ export interface Settings {
   enableProductRoutes: boolean
   enableNavigationRoutes: boolean
   enableCmsRoutes: boolean
+  enableContentPlatformRoutes: boolean
   ignoreBindings: boolean
   disableRoutesTerm: string
 }
@@ -21,18 +22,21 @@ const DEFAULT_SETTINGS: Settings = {
   disableRoutesTerm: '',
   enableAppsRoutes: true,
   enableCmsRoutes: false,
+  enableContentPlatformRoutes: false,
   enableNavigationRoutes: true,
   enableProductRoutes: true,
   ignoreBindings: false,
 }
 
-// CMS routes use a dedicated per-binding bucket (spec Decision 1) and are
-// composed into /sitemap.xml via cmsRoutesPromise in sitemap.ts — not via
-// enabledIndexFiles / the shared production bucket.
+// CMS / Content Platform routes use dedicated per-binding buckets (spec
+// Decision 1 / Decision 7) and are composed into /sitemap.xml via dedicated
+// reads in sitemap.ts — not via enabledIndexFiles / the shared production
+// bucket.
 const INDEX_MAP: Record<keyof Settings, string> = {
   disableRoutesTerm: '',
   enableAppsRoutes: APPS_ROUTES_INDEX,
   enableCmsRoutes: '',
+  enableContentPlatformRoutes: '',
   enableNavigationRoutes: REWRITER_ROUTES_INDEX,
   enableProductRoutes: PRODUCT_ROUTES_INDEX,
   ignoreBindings: '',

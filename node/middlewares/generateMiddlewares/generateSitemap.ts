@@ -1,9 +1,11 @@
+import { resolveActiveCmsSource } from '../../services/routes'
 import { startSitemapGeneration } from '../../utils'
 import { MultipleSitemapGenerationError } from './../../errors'
 
 import {
   GENERATE_APPS_ROUTES_EVENT,
   GENERATE_CMS_ROUTES_EVENT,
+  GENERATE_CONTENT_PLATFORM_ROUTES_EVENT,
   GENERATE_PRODUCT_ROUTES_EVENT,
   GENERATE_REWRITER_ROUTES_EVENT,
 } from './utils'
@@ -52,7 +54,13 @@ export async function generateSitemap(ctx: EventContext) {
     events.sendEvent('', GENERATE_APPS_ROUTES_EVENT, { generationId })
   }
 
-  if (settings.enableCmsRoutes) {
+  // Mutual exclusivity (spec Decision 8): the two CMS sources never fire at
+  // the same time. The resolver returns 'content-platform' when both flags
+  // are on, ensuring hCMS is skipped end-to-end on that combination.
+  const activeCmsSource = resolveActiveCmsSource(settings)
+  if (activeCmsSource === 'hcms') {
     events.sendEvent('', GENERATE_CMS_ROUTES_EVENT, { generationId })
+  } else if (activeCmsSource === 'content-platform') {
+    events.sendEvent('', GENERATE_CONTENT_PLATFORM_ROUTES_EVENT, { generationId })
   }
 }
